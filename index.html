@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Quiz del Cumple</title>
+<meta name="theme-color" content="#170d2e">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bagel+Fat+One&family=Figtree:wght@500;700;800;900&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<style>
+/* Layout: pantalla de fiesta. Anfitrión = tele (grande, centrado en la pregunta); jugador = mando de cuatro botones */
+:root {
+  color-scheme: dark;
+  --bg: #170d2e;
+  --bg-2: #241645;
+  --line: #3b2a66;
+  --fg: #f7f2ff;
+  --muted: #b3a6d6;
+  --a0: #ff5a4e;  /* triángulo */
+  --a1: #3d8bff;  /* rombo */
+  --a2: #f5b72a;  /* círculo */
+  --a3: #22c486;  /* cuadrado */
+  --gold: #ffd76a;
+  --ink: #170d2e;
+  --display: "Bagel Fat One", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  background-image: radial-gradient(90% 55% at 50% -5%, #3a1d6e 0%, transparent 65%);
+  color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.4;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+[hidden] { display: none !important; }
+.app {
+  min-height: 100%; max-width: 1100px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 18px 28px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+.brand { font: 400 1.4rem/1 var(--display); color: var(--gold); letter-spacing: .5px; }
+.bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pill { font: 800 .8rem var(--body); letter-spacing: .1em; text-transform: uppercase; background: var(--bg-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+h1, h2 { margin: 0; text-wrap: balance; }
+.btn {
+  font: 900 1.05rem var(--body); border: 0; border-radius: 14px; padding: 14px 22px; cursor: pointer;
+  background: var(--gold); color: var(--ink); box-shadow: 0 4px 0 #b8902f;
+}
+.btn:active { transform: translateY(2px); box-shadow: 0 2px 0 #b8902f; }
+.btn:disabled { opacity: .45; cursor: default; }
+.btn.ghost { background: var(--bg-2); color: var(--fg); box-shadow: 0 4px 0 #0e0820; border: 1px solid var(--line); }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--gold); outline-offset: 3px; }
+.muted { color: var(--muted); }
+.center { text-align: center; }
+
+/* ---------- Jugador ---------- */
+.join { display: flex; flex-direction: column; gap: 14px; max-width: 420px; width: 100%; margin: 8vh auto 0; }
+.join h1 { font: 400 clamp(2.4rem, 11vw, 3.4rem)/.95 var(--display); }
+.join h1 span { color: var(--gold); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font: 800 .78rem var(--body); text-transform: uppercase; letter-spacing: .12em; color: var(--muted); }
+.field input {
+  font: 800 1.3rem var(--body); color: var(--fg); background: var(--bg-2); border: 2px solid var(--line);
+  border-radius: 14px; padding: 14px 16px; width: 100%;
+}
+#codeIn { letter-spacing: .4em; font-variant-numeric: tabular-nums; text-align: center; font-size: 1.8rem; }
+.err { color: #ff9a92; font-weight: 700; margin: 0; min-height: 1.4em; }
+
+.wait { margin: 10vh auto 0; max-width: 420px; display: flex; flex-direction: column; gap: 12px; align-items: center; text-align: center; }
+.wait .big { font: 400 2.2rem/1.05 var(--display); }
+.dots::after { content: "…"; animation: blink 1.2s infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+
+.pq { font: 800 clamp(1.25rem, 5.4vw, 1.6rem)/1.2 var(--body); margin: 0; text-wrap: balance; }
+.timer { height: 8px; background: var(--bg-2); border-radius: 99px; overflow: hidden; }
+.timer i { display: block; height: 100%; background: var(--gold); width: 100%; transition: width .25s linear; }
+.opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.opt {
+  --c: var(--a0);
+  background: var(--c); color: #fff; border: 0; border-radius: 18px; cursor: pointer;
+  min-height: 112px; padding: 14px 12px; text-align: left;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 8px;
+  font: 800 1.02rem/1.2 var(--body); box-shadow: 0 5px 0 rgba(0,0,0,.28);
+  text-shadow: 0 1px 1px rgba(0,0,0,.25); min-width: 0; overflow-wrap: anywhere;
+}
+.opt:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.28); }
+.opt .sh { width: 26px; height: 26px; }
+.opt[data-i="1"] { --c: var(--a1); } .opt[data-i="2"] { --c: var(--a2); } .opt[data-i="3"] { --c: var(--a3); }
+.opt[data-i="2"] { color: var(--ink); text-shadow: none; }
+.opt.dim { opacity: .28; }
+.opt.right { outline: 4px solid #fff; outline-offset: 2px; }
+
+.result { border-radius: 22px; padding: 26px 20px; text-align: center; display: flex; flex-direction: column; gap: 6px; }
+.result.ok { background: var(--a3); color: var(--ink); }
+.result.no { background: var(--a0); color: #fff; }
+.result.none { background: var(--bg-2); border: 1px solid var(--line); }
+.result .big { font: 400 2.4rem/1 var(--display); }
+.result .pts { font: 900 1.3rem var(--body); font-variant-numeric: tabular-nums; }
+.me { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 16px; padding: 12px 16px; }
+.me b { font: 400 1.5rem var(--display); color: var(--gold); font-variant-numeric: tabular-nums; }
+
+/* ---------- Anfitrión ---------- */
+.lobby { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; align-items: start; }
+@media (max-width: 760px) { .lobby { grid-template-columns: 1fr; } }
+.howjoin { display: flex; flex-direction: column; gap: 14px; }
+.howjoin h1 { font: 400 clamp(2.4rem, 6vw, 4rem)/.95 var(--display); }
+.howjoin h1 span { color: var(--gold); }
+.url { font: 800 clamp(1.1rem, 2.4vw, 1.5rem) var(--body); overflow-wrap: anywhere; }
+.code { font: 400 clamp(4rem, 13vw, 8rem)/1 var(--display); color: var(--gold); letter-spacing: .08em; font-variant-numeric: tabular-nums; }
+.qr { background: #fff; border-radius: 16px; padding: 10px; width: min(220px, 60vw); aspect-ratio: 1; max-width: 100%; }
+.qr svg { width: 100%; height: 100%; display: block; }
+.roster { background: var(--bg-2); border: 1px solid var(--line); border-radius: 20px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.roster h2 { font: 400 1.5rem var(--display); }
+.names { display: flex; flex-wrap: wrap; gap: 8px; }
+.names span { background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; font-weight: 800; animation: pop .3s ease-out; }
+@keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.hq { font: 900 clamp(1.6rem, 4.2vw, 3rem)/1.12 var(--body); text-align: center; margin: 0 auto; max-width: 26ch; text-wrap: balance; }
+.hmid { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.clock { font: 400 clamp(3rem, 8vw, 5.5rem)/1 var(--display); color: var(--gold); min-width: 2ch; text-align: center; font-variant-numeric: tabular-nums; }
+.count { text-align: center; }
+.count b { display: block; font: 400 clamp(2rem, 5vw, 3.4rem)/1 var(--display); font-variant-numeric: tabular-nums; }
+.hopts .opt { min-height: clamp(90px, 15vh, 150px); font-size: clamp(1.05rem, 2.4vw, 1.7rem); cursor: default; }
+.hopts .opt .n { font: 900 .9em var(--body); opacity: .9; font-variant-numeric: tabular-nums; }
+.actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+
+.board { display: flex; flex-direction: column; gap: 10px; max-width: 760px; width: 100%; margin: 0 auto; }
+.board h2 { font: 400 clamp(2rem, 5vw, 3.2rem) var(--display); text-align: center; margin-bottom: 6px; }
+.row { display: grid; grid-template-columns: 2.5ch minmax(0, 1fr) auto; gap: 14px; align-items: center; background: var(--bg-2); border: 1px solid var(--line); border-radius: 16px; padding: 12px 18px; font-size: clamp(1rem, 2.2vw, 1.4rem); }
+.row .pos { font: 400 1.3em var(--display); color: var(--muted); font-variant-numeric: tabular-nums; }
+.row .nm { font-weight: 800; overflow-wrap: anywhere; }
+.row .sc { font: 900 1em var(--body); font-variant-numeric: tabular-nums; }
+.row.first { background: var(--gold); color: var(--ink); border-color: var(--gold); }
+.row.first .pos { color: var(--ink); }
+.podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; max-width: 760px; width: 100%; margin: 10px auto 0; }
+.step { border-radius: 18px 18px 6px 6px; padding: 14px 10px; text-align: center; display: flex; flex-direction: column; gap: 4px; justify-content: flex-end; min-width: 0; }
+.step .nm { font-weight: 900; font-size: clamp(1rem, 2.6vw, 1.6rem); overflow-wrap: anywhere; }
+.step .sc { font-variant-numeric: tabular-nums; font-weight: 700; }
+.step .medal { font: 400 clamp(2rem, 5vw, 3.4rem)/1 var(--display); }
+.s1 { background: var(--gold); color: var(--ink); min-height: 230px; order: 2; }
+.s2 { background: #c9c3dd; color: var(--ink); min-height: 180px; order: 1; }
+.s3 { background: #d98b52; color: var(--ink); min-height: 140px; order: 3; }
+
+.status { position: fixed; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); font: 700 .78rem var(--body); background: var(--bg-2); border: 1px solid var(--line); border-radius: 99px; padding: 5px 10px; color: var(--muted); }
+.status.off { color: #ff9a92; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="app" id="app"></div>
+<div class="status" id="status" hidden></div>
+
+<script>
+(() => {
+  // ================== Config ==================
+  const SUPA_URL = "https://qtnrwisjyhdwcklpargz.supabase.co";
+  const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF0bnJ3aXNqeWhkd2NrbHBhcmd6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU0MzY3ODYsImV4cCI6MjEwMTAxMjc4Nn0.eRfHrykvEQ-ttPyW10pSfDnIm6HELoob4Gv_s5pZhUg";
+  const LIMIT = 20; // segundos por pregunta
+
+  // c = índice de la correcta en a[] (se mezclan al empezar la partida)
+  const QUESTIONS = [
+    { q: "¿En qué ciudad nació Ramiro?", a: ["La Plata","Córdoba","Rosario","Mar del Plata"], c: 0 },
+    { q: "En Venezuela, ¿qué es un «pana»?", a: ["Un amigo","Un pan dulce","Una fiesta","Un borracho"], c: 0 },
+    { q: "¿Qué era un Tamagotchi?", a: ["Una mascota virtual","Un tipo de sushi","Un juego de lucha","Un reproductor de música"], c: 0 },
+    { q: "¿Cuántos años cumple Ramiro?", a: ["29","30","31","32"], c: 2, keep: true },
+    { q: "En Argentina, ¿qué es «el bondi»?", a: ["El colectivo","Una discoteca","La resaca","El novio"], c: 0 },
+    { q: "¿En qué red social se pedían «firmas» en las fotos?", a: ["Fotolog","MySpace","Tuenti","Hi5"], c: 0 },
+    { q: "¿De qué signo es Ramiro?", a: ["Libra","Escorpio","Virgo","Sagitario"], c: 0 },
+    { q: "En España, si algo «mola», ¿qué pasa?", a: ["Te gusta mucho","Te molesta","Está carísimo","Está roto"], c: 0 },
+    { q: "Para la Gen Z, ¿qué significa «slay»?", a: ["Hacerlo increíble","Romper algo","Dormir todo el día","Cancelar a alguien"], c: 0 },
+    { q: "¿Qué título tiene Ramiro?", a: ["Profesor de Educación Física","Nutricionista","Fisioterapeuta","Ingeniero"], c: 0 },
+    { q: "¿Cómo se dice «pajita» en Argentina?", a: ["Sorbete","Pitillo","Popote","Caña"], c: 0 },
+    { q: "¿Qué hacías si se enredaba la cinta de un casete?", a: ["La rebobinabas con un lápiz","La metías en el congelador","Soplabas el casete","Lo tirabas"], c: 0 },
+    { q: "¿Cómo se llamaba Mountop antes?", a: ["YoPro","FitPro","MuscleUp","TopFit"], c: 0 },
+    { q: "¿Qué es un tequeño?", a: ["Palito de queso envuelto en masa","Una arepa pequeña","Una empanada de carne","Un tipo de ron"], c: 0 },
+    { q: "¿Qué significa «POV» en TikTok?", a: ["Punto de vista","Post de vídeo","Para otro vídeo","Perfil oficial verificado"], c: 0 },
+    { q: "¿En qué empresa trabaja Ramiro?", a: ["AvaiBook","Booking","Airbnb","Wallapop"], c: 0 },
+    { q: "En España, ¿qué significa «currar»?", a: ["Trabajar","Ligar","Comer","Dormir"], c: 0 },
+    { q: "¿Qué pasaba en MSN Messenger con un «zumbido»?", a: ["La ventana temblaba","Sonaba una alarma","Se cerraba el chat","Cambiaba de color"], c: 0 },
+    { q: "¿Cómo se llama el programa de entrenamiento de Ramiro?", a: ["Fe - Hierro al Rojo Vivo","Hierro y Fe","Rojo Vivo Training","Sangre, Sudor y Hierro"], c: 0 },
+    { q: "En Venezuela, ¿qué es estar «ladillado»?", a: ["Estar harto o aburrido","Estar borracho","Estar enamorado","Estar sin dinero"], c: 0 },
+    { q: "¿Qué es el «ick»?", a: ["Algo que de golpe te quita las ganas con alguien","Un baile de TikTok","Un tipo de resaca","Un filtro de Instagram"], c: 0 },
+    { q: "¿Cuántos años le lleva Ramiro a su novio?", a: ["7","9","11","13"], c: 2, keep: true },
+    { q: "¿Qué país ganó más Mundiales de fútbol?", a: ["Argentina","España","Venezuela","Empatan Argentina y España"], c: 0 },
+    { q: "¿En qué año salió el primer iPhone?", a: ["2005","2007","2009","2010"], c: 1, keep: true },
+    { q: "¿Cuándo se comen sobre todo las hallacas en Venezuela?", a: ["En Navidad","En Carnaval","En Semana Santa","En verano"], c: 0 }
+  ];
+
+  // ================== Utilidades ==================
+  const app = document.getElementById("app");
+  const statusEl = document.getElementById("status");
+  const esc = (s) => String(s).replace(/[&<>"']/g, ch => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+    del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+  const rid = () => Math.random().toString(36).slice(2, 10);
+  const shuffle = (a) => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const SHAPES = [
+    '<svg class="sh" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 22 21H2z" fill="currentColor"/></svg>',
+    '<svg class="sh" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 22 12 12 22 2 12z" fill="currentColor"/></svg>',
+    '<svg class="sh" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/></svg>',
+    '<svg class="sh" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" fill="currentColor"/></svg>'
+  ];
+  const sb = supabase.createClient(SUPA_URL, SUPA_KEY, { realtime: { params: { eventsPerSecond: 20 } } });
+  function setStatus(ok, text) { statusEl.hidden = false; statusEl.className = "status" + (ok ? "" : " off"); statusEl.textContent = text; }
+
+  const params = new URLSearchParams(location.search);
+  if (params.has("host")) host(); else player();
+
+  // =====================================================================
+  // ANFITRIÓN
+  // =====================================================================
+  function host() {
+    document.title = "Quiz del Cumple · Anfitrión";
+    let G = store.get("quiz-host", null);
+    if (!G || G.phase === "end" && params.get("host") === "new") G = null;
+    if (!G) G = freshGame();
+    let ch = null, tick = null, online = {};
+
+    function freshGame() {
+      const order = QUESTIONS.map(x => {
+        if (x.keep) return { q: x.q, a: x.a.slice(), c: x.c };
+        const opts = shuffle(x.a); return { q: x.q, a: opts, c: opts.indexOf(x.a[x.c]) };
+      });
+      return { code: String(Math.floor(1000 + Math.random() * 9000)), phase: "lobby", qi: -1, order,
+               endsAt: 0, answers: {}, scores: {}, last: {} };
+    }
+    const save = () => store.set("quiz-host", G);
+    const q = () => G.order[G.qi];
+
+    function connect() {
+      if (ch) sb.removeChannel(ch);
+      online = {};
+      ch = sb.channel("quiz-" + G.code, { config: { broadcast: { self: false }, presence: { key: "host" } } });
+      ch.on("presence", { event: "sync" }, () => {
+        const st = ch.presenceState(); online = {};
+        Object.keys(st).forEach(k => { if (k === "host") return; const m = st[k][0]; if (m && m.id) { online[m.id] = String(m.name || "Sin nombre").slice(0, 20); } });
+        Object.entries(online).forEach(([id, name]) => { G.scores[id] = G.scores[id] || { name, total: 0 }; G.scores[id].name = name; });
+        save(); if (G.phase === "lobby" || G.phase === "question") render();
+        sendState();
+      });
+      ch.on("broadcast", { event: "hello" }, () => sendState());
+      ch.on("broadcast", { event: "answer" }, ({ payload: p }) => {
+        if (!p || G.phase !== "question" || p.qi !== G.qi || typeof p.id !== "string") return;
+        const choice = Number(p.choice);
+        if (!(choice >= 0 && choice < 4)) return;
+        if (!G.answers[p.id] && Date.now() <= G.endsAt + 800) {
+          G.answers[p.id] = { choice, ms: Math.max(0, LIMIT * 1000 - (G.endsAt - Date.now())) };
+          if (!G.scores[p.id]) G.scores[p.id] = { name: String(p.name || "Sin nombre").slice(0, 20), total: 0 };
+          save(); render();
+          const ids = Object.keys(online);
+          if (ids.length && ids.every(id => G.answers[id])) return reveal();
+        }
+        sendState();
+      });
+      ch.subscribe((s) => {
+        if (s === "SUBSCRIBED") { setStatus(true, "Conectado"); ch.track({ role: "host" }); sendState(); }
+        else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") setStatus(false, "Sin conexión, reintentando…");
+      });
+    }
+
+    function ranking() {
+      return Object.entries(G.scores).map(([id, s]) => ({ id, name: s.name, total: s.total }))
+        .sort((x, y) => y.total - x.total);
+    }
+    function publicState() {
+      const s = { phase: G.phase, qi: G.qi, total: G.order.length };
+      if (G.phase === "question") {
+        s.q = q().q; s.a = q().a; s.remaining = Math.max(0, G.endsAt - Date.now()); s.limit = LIMIT * 1000;
+        s.answered = Object.keys(G.answers);
+      }
+      if (G.phase === "reveal" || G.phase === "board" || G.phase === "end") {
+        const rk = ranking(); s.ranks = {}; s.totals = {};
+        rk.forEach((r, i) => { s.ranks[r.id] = i + 1; s.totals[r.id] = r.total; });
+        s.players = rk.length;
+      }
+      if (G.phase === "reveal") { s.q = q().q; s.a = q().a; s.c = q().c; s.last = G.last; }
+      if (G.phase === "end") s.top = ranking().slice(0, 3).map(r => ({ name: r.name, total: r.total }));
+      return s;
+    }
+    function sendState() { if (ch) ch.send({ type: "broadcast", event: "state", payload: publicState() }); }
+
+    function startQuestion(i) {
+      G.qi = i; G.phase = "question"; G.answers = {}; G.endsAt = Date.now() + LIMIT * 1000;
+      save(); render(); sendState();
+    }
+    function reveal() {
+      if (G.phase !== "question") return;
+      const cur = q(); G.last = {};
+      Object.entries(G.answers).forEach(([id, ans]) => {
+        const ok = ans.choice === cur.c;
+        const pts = ok ? Math.round(1000 * (1 - Math.min(1, ans.ms / (LIMIT * 1000)) / 2)) : 0;
+        G.scores[id] = G.scores[id] || { name: "Sin nombre", total: 0 };
+        G.scores[id].total += pts; G.last[id] = { ok, pts };
+      });
+      G.phase = "reveal"; save(); render(); sendState();
+    }
+    function toBoard() { G.phase = "board"; save(); render(); sendState(); }
+    function next() { if (G.qi + 1 < G.order.length) startQuestion(G.qi + 1); else { G.phase = "end"; save(); render(); sendState(); } }
+    function restart() { store.del("quiz-host"); G = freshGame(); save(); connect(); render(); }
+
+    function render() {
+      const top = `<div class="bar"><span class="brand">Quiz del Cumple</span>${G.qi >= 0 && G.phase !== "end" ? `<span class="pill">Pregunta ${G.qi + 1} de ${G.order.length}</span>` : ""}<span class="pill">Código ${G.code}</span></div>`;
+      if (G.phase === "lobby") {
+        const url = location.origin + "/";
+        const names = Object.values(online);
+        app.innerHTML = top + `
+          <div class="lobby">
+            <div class="howjoin">
+              <h1>Sacá el móvil<br><span>y entrá</span></h1>
+              <p class="url">${esc(url.replace(/^https?:\/\//, ""))}</p>
+              <span class="muted">Código de la partida</span>
+              <span class="code">${G.code}</span>
+              <div class="qr" id="qr"></div>
+            </div>
+            <div class="roster">
+              <h2>${names.length} ${names.length === 1 ? "jugador" : "jugadores"}</h2>
+              <div class="names">${names.length ? names.map(n => `<span>${esc(n)}</span>`).join("") : '<span class="muted" style="border:0;background:none;padding:0">Esperando a que entre alguien<span class="dots"></span></span>'}</div>
+              <div class="actions"><button class="btn" id="go" ${names.length ? "" : "disabled"}>Empezar</button></div>
+            </div>
+          </div>`;
+        try { const qr = qrcode(0, "M"); qr.addData(url + "?c=" + G.code); qr.make(); document.getElementById("qr").innerHTML = qr.createSvgTag({ cellSize: 6, margin: 1, scalable: true }); } catch (e) {}
+        document.getElementById("go").onclick = () => startQuestion(0);
+      } else if (G.phase === "question") {
+        const cur = q(); const n = Object.keys(G.answers).length;
+        app.innerHTML = top + `
+          <p class="hq">${esc(cur.q)}</p>
+          <div class="hmid"><span class="clock" id="clock">${LIMIT}</span><div class="count"><b>${n}</b><span class="muted">${n === 1 ? "respuesta" : "respuestas"}</span></div></div>
+          <div class="opts hopts">${cur.a.map((t, i) => `<div class="opt" data-i="${i}">${SHAPES[i]}<span>${esc(t)}</span></div>`).join("")}</div>
+          <div class="actions"><button class="btn ghost" id="skip">Cerrar respuestas</button></div>`;
+        document.getElementById("skip").onclick = reveal;
+        updateClock();
+      } else if (G.phase === "reveal") {
+        const cur = q(); const counts = [0, 0, 0, 0];
+        Object.values(G.answers).forEach(a => counts[a.choice]++);
+        app.innerHTML = top + `
+          <p class="hq">${esc(cur.q)}</p>
+          <div class="opts hopts">${cur.a.map((t, i) => `<div class="opt ${i === cur.c ? "right" : "dim"}" data-i="${i}">${SHAPES[i]}<span>${esc(t)}</span><span class="n">${counts[i]} ${counts[i] === 1 ? "voto" : "votos"}</span></div>`).join("")}</div>
+          <div class="actions"><button class="btn" id="nx">Ver ranking</button></div>`;
+        document.getElementById("nx").onclick = toBoard;
+      } else if (G.phase === "board") {
+        const rk = ranking().slice(0, 5); const last = G.qi + 1 >= G.order.length;
+        app.innerHTML = top + `
+          <div class="board"><h2>Ranking</h2>
+            ${rk.map((r, i) => `<div class="row ${i === 0 ? "first" : ""}"><span class="pos">${i + 1}</span><span class="nm">${esc(r.name)}</span><span class="sc">${r.total}</span></div>`).join("") || '<p class="muted center">Todavía nadie suma puntos.</p>'}
+          </div>
+          <div class="actions"><button class="btn" id="nx">${last ? "Ver el podio" : "Siguiente pregunta"}</button></div>`;
+        document.getElementById("nx").onclick = next;
+      } else if (G.phase === "end") {
+        const rk = ranking(); const p = [rk[0], rk[1], rk[2]];
+        app.innerHTML = top + `
+          <div class="board"><h2>¡Podio!</h2></div>
+          <div class="podium">
+            ${p.map((r, i) => r ? `<div class="step s${i + 1}"><span class="medal">${i + 1}</span><span class="nm">${esc(r.name)}</span><span class="sc">${r.total} pts</span></div>` : `<div class="step s${i + 1}"></div>`).join("")}
+          </div>
+          <div class="board">${rk.slice(3).map((r, i) => `<div class="row"><span class="pos">${i + 4}</span><span class="nm">${esc(r.name)}</span><span class="sc">${r.total}</span></div>`).join("")}</div>
+          <div class="actions"><button class="btn ghost" id="again">Nueva partida</button></div>`;
+        document.getElementById("again").onclick = restart;
+      }
+    }
+    function updateClock() {
+      const el = document.getElementById("clock"); if (!el) return;
+      el.textContent = Math.max(0, Math.ceil((G.endsAt - Date.now()) / 1000));
+    }
+
+    tick = setInterval(() => {
+      if (G.phase === "question") { updateClock(); if (Date.now() >= G.endsAt) reveal(); }
+    }, 250);
+    setInterval(sendState, 2500);
+    connect(); render();
+  }
+
+  // =====================================================================
+  // JUGADOR
+  // =====================================================================
+  function player() {
+    let me = store.get("quiz-me", null);
+    if (!me) { me = { id: rid(), name: "" }; store.set("quiz-me", me); }
+    let ch = null, S = null, code = params.get("c") || store.get("quiz-code", ""), joined = false;
+    let picked = {}, resend = null, clock = null, deadline = 0, heard = false;
+
+    function joinForm(err) {
+      app.innerHTML = `
+        <form class="join" id="jf" autocomplete="off">
+          <h1>Quiz del<br><span>Cumple</span></h1>
+          <div class="field"><label for="codeIn">Código de la partida</label><input id="codeIn" inputmode="numeric" pattern="[0-9]*" maxlength="4" value="${esc(code)}" placeholder="0000"></div>
+          <div class="field"><label for="nameIn">Tu nombre</label><input id="nameIn" maxlength="20" value="${esc(me.name)}" placeholder="Como te conocen"></div>
+          <p class="err" id="err">${err ? esc(err) : ""}</p>
+          <button class="btn" type="submit">Entrar</button>
+        </form>`;
+      document.getElementById("jf").onsubmit = (e) => {
+        e.preventDefault();
+        const c = document.getElementById("codeIn").value.trim();
+        const n = document.getElementById("nameIn").value.trim();
+        if (!/^\d{4}$/.test(c)) return (document.getElementById("err").textContent = "El código tiene 4 números. Lo ves en la pantalla grande.");
+        if (!n) return (document.getElementById("err").textContent = "Poné tu nombre para que sepan quién gana.");
+        code = c; me.name = n; store.set("quiz-me", me); store.set("quiz-code", code); connect();
+      };
+    }
+
+    function connect() {
+      if (ch) sb.removeChannel(ch);
+      joined = true; heard = false; S = null;
+      app.innerHTML = `<div class="wait"><span class="big">Conectando<span class="dots"></span></span></div>`;
+      ch = sb.channel("quiz-" + code, { config: { broadcast: { self: false }, presence: { key: me.id } } });
+      ch.on("broadcast", { event: "state" }, ({ payload }) => { heard = true; S = payload; render(); });
+      ch.subscribe((s) => {
+        if (s === "SUBSCRIBED") {
+          setStatus(true, "Conectado");
+          ch.track({ id: me.id, name: me.name });
+          ch.send({ type: "broadcast", event: "hello", payload: {} });
+          setTimeout(() => { if (!heard && joined) joinForm("No encontramos esa partida. Revisá el código en la pantalla grande."); }, 6000);
+        } else if (s === "CHANNEL_ERROR" || s === "TIMED_OUT" || s === "CLOSED") setStatus(false, "Sin conexión, reintentando…");
+      });
+    }
+
+    function sendAnswer(choice) {
+      if (!S || S.phase !== "question") return;
+      picked[S.qi] = choice;
+      const qi = S.qi;
+      const send = () => ch && ch.send({ type: "broadcast", event: "answer", payload: { id: me.id, name: me.name, qi, choice } });
+      send(); clearInterval(resend);
+      resend = setInterval(() => {
+        if (!S || S.phase !== "question" || S.qi !== qi || (S.answered || []).includes(me.id)) return clearInterval(resend);
+        send();
+      }, 1500);
+      render();
+    }
+
+    function meBar() {
+      const t = S && S.totals ? (S.totals[me.id] || 0) : null;
+      const r = S && S.ranks ? S.ranks[me.id] : null;
+      return `<div class="me"><span>${esc(me.name)}${r ? ` · puesto ${r} de ${S.players}` : ""}</span>${t !== null ? `<b>${t}</b>` : ""}</div>`;
+    }
+
+    function render() {
+      clearInterval(clock);
+      if (!S) return;
+      const top = `<div class="bar"><span class="brand">Quiz del Cumple</span>${S.qi >= 0 && S.phase !== "end" ? `<span class="pill">${S.qi + 1} / ${S.total}</span>` : ""}</div>`;
+      if (S.phase === "lobby") {
+        app.innerHTML = top + `<div class="wait"><span class="big">¡Adentro, ${esc(me.name)}!</span><p class="muted">Mirá la pantalla grande. El juego arranca cuando el cumpleañero lo diga<span class="dots"></span></p><button class="btn ghost" id="chg">Cambiar nombre o código</button></div>`;
+        document.getElementById("chg").onclick = () => { joined = false; if (ch) sb.removeChannel(ch); ch = null; joinForm(); };
+      } else if (S.phase === "question") {
+        const mine = picked[S.qi];
+        const sent = mine !== undefined || (S.answered || []).includes(me.id);
+        deadline = Date.now() + (S.remaining || 0);
+        app.innerHTML = top + `
+          <p class="pq">${esc(S.q)}</p>
+          <div class="timer"><i id="tb"></i></div>
+          <div class="opts">${S.a.map((t, i) => `<button class="opt ${sent && mine !== i ? "dim" : ""}" data-i="${i}" ${sent ? "disabled" : ""}>${SHAPES[i]}<span>${esc(t)}</span></button>`).join("")}</div>
+          ${sent ? `<p class="center muted">${(S.answered || []).includes(me.id) ? "Respuesta enviada. Esperá a los demás." : "Enviando…"}</p>` : ""}`;
+        app.querySelectorAll(".opt").forEach(b => b.onclick = () => sendAnswer(Number(b.dataset.i)));
+        const bar = document.getElementById("tb");
+        const upd = () => { const left = Math.max(0, deadline - Date.now()); bar.style.width = (100 * left / (S.limit || 20000)) + "%"; };
+        upd(); clock = setInterval(upd, 250);
+      } else if (S.phase === "reveal") {
+        const r = (S.last || {})[me.id];
+        const cls = !r ? "none" : r.ok ? "ok" : "no";
+        const msg = !r ? "No respondiste" : r.ok ? "¡Bien!" : "Nop";
+        app.innerHTML = top + `
+          <div class="result ${cls}"><span class="big">${msg}</span><span class="pts">${r && r.ok ? "+" + r.pts + " puntos" : "0 puntos"}</span>${!r || !r.ok ? `<span>La correcta: ${esc(S.a[S.c])}</span>` : ""}</div>
+          ${meBar()}`;
+      } else if (S.phase === "board") {
+        app.innerHTML = top + `<div class="wait"><span class="big">Mirá el ranking</span><p class="muted">En la pantalla grande<span class="dots"></span></p></div>${meBar()}`;
+      } else if (S.phase === "end") {
+        const r = S.ranks ? S.ranks[me.id] : null;
+        app.innerHTML = top + `<div class="wait"><span class="big">${r === 1 ? "¡Ganaste!" : r ? "Quedaste " + r + "º" : "¡Terminó!"}</span><p class="muted">Gracias por jugar al quiz del cumple.</p></div>${meBar()}`;
+      }
+    }
+
+    if (code && me.name && store.get("quiz-code", "") === code) connect(); else joinForm();
+  }
+})();
+</script>
+</body>
+</html>
